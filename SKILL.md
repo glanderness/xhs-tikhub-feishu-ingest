@@ -242,8 +242,10 @@ Keep the final response concise. Mention the record id, title, author, interacti
 
 Grid view is for scanning and will truncate long text cells. Do not treat this as missing data if record readback shows the full text.
 
-- Keep the main grid compact for scanning.
-- For reading long `简介` or `文字内容` fields, create or maintain a gallery/card view such as `详情阅读视图`.
+- Name the main grid view `表格视图`.
+- Name the gallery/card reading view `卡片视图`.
+- Keep `表格视图` compact for scanning.
+- For reading long `简介` or `文字内容` fields, create or maintain a gallery/card view named `卡片视图`.
 - Set `视频封面` as the gallery cover field.
 - Recommended visible field order: `视频标题`, `作者`, `视频封面`, `视频链接`, `视频时长`, `点赞量`, `评论量`, `收藏量`, `核心总结`, `简介`, `文字内容`, `视频文件本身`.
 - If view configuration by field name fails, list fields and retry with field IDs.
