@@ -121,6 +121,8 @@ Display interaction metrics as whole numbers.
 - Do not show `.00` or `.0` in grid/card/detail views.
 - When creating or repairing a Base, use number style `{"type":"plain","precision":0,"thousands_separator":false,"percentage":false}` for all three fields.
 - Write integer values from TikHub counts; if TikHub returns strings, parse them to integers before creating the Feishu row.
+- In `表格视图`, visually center-align short numeric/metric columns: `点赞量`, `评论量`, `收藏量`, and `视频时长`.
+- If `lark-cli` cannot set cell alignment for a Base view, keep this as a required Feishu UI cleanup step and mention it instead of pretending the API handled it.
 
 ## Candidate Selection
 
@@ -280,6 +282,7 @@ Grid view is for scanning and will truncate long text cells. Do not treat this a
 - For reading long `简介` or `文字内容` fields, create or maintain a gallery/card view named `卡片视图`.
 - Set `视频封面` as the gallery cover field.
 - Recommended visible field order: `视频标题`, `作者`, `视频封面`, `视频链接`, `视频时长`, `点赞量`, `评论量`, `收藏量`, `核心总结`, `简介`, `文字内容`, `视频文件本身`.
+- In `表格视图`, keep the metric columns visually consistent: `点赞量`, `评论量`, `收藏量`, and `视频时长` should be centered in their cells, with compact column widths.
 - If view configuration by field name fails, list fields and retry with field IDs.
 
 ## Record Detail Layout
@@ -301,6 +304,7 @@ Use this structure:
    - Layout: four columns.
    - Fields, left to right: `视频时长`, `评论量`, `收藏量`, `点赞量`.
    - Use number fields with clear labels and enough spacing. `评论量`, `收藏量`, and `点赞量` must display as integers without decimal places.
+   - Center-align `视频时长`, `评论量`, `收藏量`, and `点赞量` so the metric block reads as a unified group.
 4. Section: `核心总结`
    - Layout: full-width or readable text block before the long transcript.
    - Main field: `核心总结`.
