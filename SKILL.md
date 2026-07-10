@@ -25,6 +25,7 @@ Expected fields:
 - `作者`
 - `视频封面` attachment
 - `视频链接`
+- `视频时长`
 - `简介`
 - `核心总结`
 - `文字内容`
@@ -70,6 +71,7 @@ Keep quality, but avoid slow redundant work.
 - `视频标题`: TikHub `title`
 - `作者`: `user.nickname`
 - `视频链接`: canonical Xiaohongshu detail URL, preferably `share_info.link`; fall back to the original xhslink share URL
+- `视频时长`: formatted duration such as `3:31`; derive from the selected video's duration fields
 - `简介`: full TikHub `desc`, not a shortened summary
 - `核心总结`: bullet-point summary of the video's core framework and key ideas, 300 Chinese characters or fewer
 - `文字内容`: cleaned `zh-CN` subtitle text; use `source` subtitle if `zh-CN` is absent
@@ -87,6 +89,16 @@ TikHub can return a list of related notes instead of only the target note.
 - If there are several candidates, choose the one whose `share_info.link` or `note_id` corresponds to the share link. If the share link resolution is ambiguous, prefer the item whose title/author matches the opened target context.
 - Save the full raw response before filtering so selection can be audited later.
 - Put the chosen `note_id`, title, author, canonical link, and interaction counts into `note_metadata.json`.
+
+## Duration
+
+Capture each video's duration and write it to Feishu.
+
+- Prefer `video_info_v2.media.video.duration` when present; it is usually seconds.
+- If that is missing, use `widgets_context.video_duration` after parsing the JSON string.
+- If only stream metadata is available, use `video_info_v2.media.stream.h264[0].duration` or another stream `duration`; treat values over 1000 as milliseconds and round to seconds.
+- Store both `duration_seconds` and `duration_display` in `note_metadata.json`.
+- Write `duration_display` to the Feishu `视频时长` field. Format under one hour as `M:SS`; format one hour or longer as `H:MM:SS`.
 
 ## Cover Rules
 
@@ -147,7 +159,7 @@ Create row:
 lark-cli base +record-batch-create --as user \
   --base-token OHDKbmvo7aaqUlssdXncKTHCnDc \
   --table-id tbl1gfUEArDaQQun \
-  --json '{"fields":["视频标题","作者","视频链接","简介","核心总结","文字内容","点赞量","评论量","收藏量"],"rows":[[...]]}'
+  --json '{"fields":["视频标题","作者","视频链接","视频时长","简介","核心总结","文字内容","点赞量","评论量","收藏量"],"rows":[[...]]}'
 ```
 
 Save this payload locally as `feishu_record_payload.json`, and save the creation response as `feishu_record_create.json`.
@@ -198,6 +210,7 @@ Before final response, verify and report:
 - Record ID
 - Title and author
 - Like/comment/favorite counts
+- Video duration
 - `核心总结` exists and is no more than 300 Chinese characters
 - Full `简介` length or trailing content if completeness was questioned
 - Subtitle text exists when available
@@ -205,6 +218,16 @@ Before final response, verify and report:
 - `视频链接` exists and points to the canonical Xiaohongshu note URL
 - `视频文件本身` is empty for normal runs unless the user explicitly requested video file archival
 - Local folder path
+- Feishu Base link: `https://scnitw8fqog4.feishu.cn/base/OHDKbmvo7aaqUlssdXncKTHCnDc`
+
+## Final Response
+
+After every successful ingestion, include both places Lucas needs next:
+
+- Local folder path for the saved artifacts.
+- Feishu Base link for opening the table.
+
+Keep the final response concise. Mention the record id, title, author, interaction counts, video duration, the local folder path, and the Feishu Base link.
 
 ## Long Text Readability
 
@@ -213,7 +236,7 @@ Grid view is for scanning and will truncate long text cells. Do not treat this a
 - Keep the main grid compact for scanning.
 - For reading long `简介` or `文字内容` fields, create or maintain a gallery/card view such as `详情阅读视图`.
 - Set `视频封面` as the gallery cover field.
-- Recommended visible field order: `视频标题`, `作者`, `视频封面`, `视频链接`, `点赞量`, `评论量`, `收藏量`, `核心总结`, `简介`, `文字内容`, `视频文件本身`.
+- Recommended visible field order: `视频标题`, `作者`, `视频封面`, `视频链接`, `视频时长`, `点赞量`, `评论量`, `收藏量`, `核心总结`, `简介`, `文字内容`, `视频文件本身`.
 - If view configuration by field name fails, list fields and retry with field IDs.
 
 ## Record Detail Layout
@@ -232,8 +255,8 @@ Use this structure:
    - Show the cover as a visual preview card.
    - Show `视频链接` as a clickable URL so Lucas can jump to Xiaohongshu to watch.
 3. Section: `视频数据`
-   - Layout: three columns.
-   - Fields, left to right: `评论量`, `收藏量`, `点赞量`.
+   - Layout: four columns.
+   - Fields, left to right: `视频时长`, `评论量`, `收藏量`, `点赞量`.
    - Use number fields with clear labels and enough spacing.
 4. Section: `核心总结`
    - Layout: full-width or readable text block before the long transcript.
