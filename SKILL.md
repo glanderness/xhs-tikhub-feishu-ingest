@@ -49,10 +49,14 @@ If the user changes the Base, read its fields first with `lark-cli base +field-l
    - If needed, try `/api/v1/xiaohongshu/app_v2/get_image_note_detail` or `get_mixed_note_detail`.
    - Save every response as `raw_<kind>.json`.
 4. Select the real target note. If TikHub returns multiple candidates, pick the one matching the share link/title/author and ignore related candidates.
-5. Write `note_metadata.json`, `note.md`, downloaded cover assets, `transcript_zh-CN.txt`, and `core_summary.txt`.
-6. Create the Feishu record with text/number fields first.
-7. Upload only the cover file with `lark-cli base +record-upload-attachment`.
-8. Read the Feishu record back and verify field values and attachment names/tokens.
+5. Resolve the creator before creating the video row:
+   - Search `对标博主` for the creator using `user.userid` when available; also check exact `博主名称` as a fallback.
+   - If the creator already exists, reuse that creator record id for the video `作者` link field.
+   - If the creator is new, call TikHub `/api/v1/xiaohongshu/app_v2/get_user_info?user_id=<id>`, create a new `对标博主` row, upload avatar/background attachments, then use the new record id.
+6. Write `note_metadata.json`, `note.md`, downloaded cover assets, `transcript_zh-CN.txt`, and `core_summary.txt`.
+7. Create the Feishu video record with text/number/link fields first. `作者` must be `[{"id":"<creator_record_id>"}]`.
+8. Upload only the cover file with `lark-cli base +record-upload-attachment`.
+9. Read the Feishu record back and verify field values, linked author, and attachment names/tokens.
 
 ## Performance Rules
 
@@ -107,7 +111,16 @@ Keep creator-level analysis in a second table inside the same Feishu Base.
 - When writing a link-cell value, use `[{"id":"<creator_record_id>"}]`. Do not use `record_id` inside the cell value; Feishu rejects that shape.
 - The CLI currently creates this as a one-way link (`bidirectional: false`). If Lucas wants reverse inline display inside the Feishu UI, document that UI-side adjustment separately instead of blocking ingestion.
 
-When ingesting a video, first find or create the creator row in `对标博主` using the TikHub `user.userid` / nickname. Then write the video row's `作者` field as a link to that creator row. If only the video detail endpoint was called and creator profile data is incomplete, use the available nickname/avatar to create a minimal creator row, then enrich it later with `get_user_info`.
+Creator resolution SOP for every video ingestion:
+
+1. Extract the creator identity from the selected note: `user.userid` / `user.id`, `user.nickname`, `user.red_id`, and avatar URL.
+2. Search `对标博主` before creating anything.
+   - Prefer matching by stored user id if such a field exists in the future.
+   - Current table has no user-id field, so match by exact `博主名称`; only create a new creator when no exact existing row is found.
+3. If an existing creator row is found, reuse its record id and write the video row's `作者` link to that record.
+4. If the creator is new, call TikHub `get_user_info` with `user_id`, save the raw response under `小红书笔记采集/benchmark_creators/<creator_slug>/`, download avatar/background assets, create the `对标博主` row, upload attachments, and then write the video row's `作者` link.
+5. If `get_user_info` fails, create a minimal creator row from the video detail data (`博主名称`, avatar when available), link the video to it, and note that the creator profile needs enrichment later.
+6. Never leave the visible `作者` field as plain text. If a backup is useful, write the nickname to hidden `作者文本`, but the visible author column must be the linked creator record.
 
 Create the benchmark creator table when missing:
 
