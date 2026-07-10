@@ -18,6 +18,8 @@ Default to the existing Base unless the user asks for a new one:
 - `base_token`: `OHDKbmvo7aaqUlssdXncKTHCnDc`
 - Table: `视频笔记`
 - `table_id`: `tbl1gfUEArDaQQun`
+- Benchmark creator table: `对标博主`
+- `benchmark_table_id`: `tblwou5tJyHf4tMg`
 
 Expected fields:
 
@@ -26,6 +28,7 @@ Expected fields:
 - `视频封面` attachment
 - `视频链接`
 - `视频时长`
+- `对标博主` link to the `对标博主` table
 - `简介`
 - `核心总结`
 - `文字内容`
@@ -80,6 +83,34 @@ Keep quality, but avoid slow redundant work.
 - `收藏量`: `collected_count`
 - `视频封面`: correct cover file; see cover rules below
 - `视频文件本身`: legacy attachment field; leave empty for new records unless the user explicitly asks to upload the video file
+
+## Benchmark Creator Table
+
+Keep creator-level analysis in a second table inside the same Feishu Base.
+
+- Table name: `对标博主`
+- Table id: `tblwou5tJyHf4tMg`
+- Purpose: store benchmark creator profiles separately from individual video notes, then link video notes to the relevant creator through the `视频笔记`.`对标博主` link field.
+- Required fields:
+  - `博主名称`: text primary field
+  - `头像`: attachment
+  - `简介`: text
+  - `主页背景图`: attachment
+  - `粉丝量`: number, `precision: 0`
+  - `获赞和收藏量`: number, `precision: 0`
+- Use integer display for creator metrics. Do not show `.00` or `.0`.
+- For attachments, save avatar and background assets locally before uploading them to the record.
+- When creating or repairing the link field on `视频笔记`, use Feishu's `link` field with `link_table`, for example `{"name":"对标博主","type":"link","link_table":"tblwou5tJyHf4tMg"}`. Do not use `table_id`; the field-create API rejects it for link fields.
+- The CLI currently creates this as a one-way link (`bidirectional: false`). If Lucas wants reverse inline display inside the Feishu UI, document that UI-side adjustment separately instead of blocking ingestion.
+
+Create the benchmark creator table when missing:
+
+```bash
+lark-cli base +table-create --as user \
+  --base-token OHDKbmvo7aaqUlssdXncKTHCnDc \
+  --name "对标博主" \
+  --fields '[{"name":"博主名称","type":"text"},{"name":"头像","type":"attachment"},{"name":"简介","type":"text"},{"name":"主页背景图","type":"attachment"},{"name":"粉丝量","type":"number","style":{"type":"plain","precision":0,"thousands_separator":false,"percentage":false}},{"name":"获赞和收藏量","type":"number","style":{"type":"plain","precision":0,"thousands_separator":false,"percentage":false}}]'
+```
 
 ## Interaction Number Fields
 
