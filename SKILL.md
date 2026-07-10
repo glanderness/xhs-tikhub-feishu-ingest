@@ -24,11 +24,11 @@ Default to the existing Base unless the user asks for a new one:
 Expected fields:
 
 - `视频标题`
-- `作者`
+- `作者` link to the `对标博主` table
+- `作者文本` optional hidden backup text field
 - `视频封面` attachment
 - `视频链接`
 - `视频时长`
-- `对标博主` link to the `对标博主` table
 - `简介`
 - `核心总结`
 - `文字内容`
@@ -72,7 +72,8 @@ Keep quality, but avoid slow redundant work.
 ## Field Mapping
 
 - `视频标题`: TikHub `title`
-- `作者`: `user.nickname`
+- `作者`: link-cell value pointing to the creator record in `对标博主`, using `[{"id":"<creator_record_id>"}]`
+- `作者文本`: optional hidden backup of `user.nickname`; keep it for old rows and debugging, but do not show it in normal views
 - `视频链接`: canonical Xiaohongshu detail URL, preferably `share_info.link`; fall back to the original xhslink share URL
 - `视频时长`: formatted duration such as `3:31`; derive from the selected video's duration fields
 - `简介`: full TikHub `desc`, not a shortened summary
@@ -90,7 +91,7 @@ Keep creator-level analysis in a second table inside the same Feishu Base.
 
 - Table name: `对标博主`
 - Table id: `tblwou5tJyHf4tMg`
-- Purpose: store benchmark creator profiles separately from individual video notes, then link video notes to the relevant creator through the `视频笔记`.`对标博主` link field.
+- Purpose: store creator profiles separately from individual video notes, then link video notes to the relevant creator through the `视频笔记`.`作者` link field.
 - Required fields:
   - `博主名称`: text primary field
   - `头像`: attachment
@@ -100,9 +101,13 @@ Keep creator-level analysis in a second table inside the same Feishu Base.
   - `获赞和收藏量`: number, `precision: 0`
 - Use integer display for creator metrics. Do not show `.00` or `.0`.
 - For attachments, save avatar and background assets locally before uploading them to the record.
-- When creating or repairing the link field on `视频笔记`, use Feishu's `link` field with `link_table`, for example `{"name":"对标博主","type":"link","link_table":"tblwou5tJyHf4tMg"}`. Do not use `table_id`; the field-create API rejects it for link fields.
+- In `视频笔记`, the visible `作者` field must be the link field to `对标博主`, not a plain text field.
+- Keep the old plain-text author field only as hidden `作者文本` if it already exists; do not use it as the normal author column.
+- When creating or repairing the author link field on `视频笔记`, use Feishu's `link` field with `link_table`, for example `{"name":"作者","type":"link","link_table":"tblwou5tJyHf4tMg"}`. Do not use `table_id`; the field-create API rejects it for link fields.
 - When writing a link-cell value, use `[{"id":"<creator_record_id>"}]`. Do not use `record_id` inside the cell value; Feishu rejects that shape.
 - The CLI currently creates this as a one-way link (`bidirectional: false`). If Lucas wants reverse inline display inside the Feishu UI, document that UI-side adjustment separately instead of blocking ingestion.
+
+When ingesting a video, first find or create the creator row in `对标博主` using the TikHub `user.userid` / nickname. Then write the video row's `作者` field as a link to that creator row. If only the video detail endpoint was called and creator profile data is incomplete, use the available nickname/avatar to create a minimal creator row, then enrich it later with `get_user_info`.
 
 Create the benchmark creator table when missing:
 
@@ -251,7 +256,7 @@ Save the readback as `feishu_record_get.json`. The response shape is array-based
 Before final response, verify and report:
 
 - Record ID
-- Title and author
+- Title and linked author
 - Like/comment/favorite counts
 - Video duration
 - `核心总结` exists and is no more than 300 Chinese characters
@@ -281,7 +286,7 @@ Grid view is for scanning and will truncate long text cells. Do not treat this a
 - Keep `表格视图` compact for scanning.
 - For reading long `简介` or `文字内容` fields, create or maintain a gallery/card view named `卡片视图`.
 - Set `视频封面` as the gallery cover field.
-- Recommended visible field order: `视频标题`, `作者`, `视频封面`, `视频链接`, `视频时长`, `点赞量`, `评论量`, `收藏量`, `核心总结`, `简介`, `文字内容`, `视频文件本身`.
+- Recommended visible field order: `视频标题`, `作者`, `视频封面`, `视频链接`, `视频时长`, `点赞量`, `评论量`, `收藏量`, `核心总结`, `简介`, `文字内容`, `视频文件本身`. Hide `作者文本` from normal views.
 - In `表格视图`, keep the metric columns visually consistent: `点赞量`, `评论量`, `收藏量`, and `视频时长` should be centered in their cells, with compact column widths.
 - If view configuration by field name fails, list fields and retry with field IDs.
 
