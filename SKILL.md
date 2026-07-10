@@ -81,6 +81,15 @@ Keep quality, but avoid slow redundant work.
 - `视频封面`: correct cover file; see cover rules below
 - `视频文件本身`: legacy attachment field; leave empty for new records unless the user explicitly asks to upload the video file
 
+## Interaction Number Fields
+
+Display interaction metrics as whole numbers.
+
+- Configure `点赞量`, `评论量`, and `收藏量` as number fields with `precision: 0`.
+- Do not show `.00` or `.0` in grid/card/detail views.
+- When creating or repairing a Base, use number style `{"type":"plain","precision":0,"thousands_separator":false,"percentage":false}` for all three fields.
+- Write integer values from TikHub counts; if TikHub returns strings, parse them to integers before creating the Feishu row.
+
 ## Candidate Selection
 
 TikHub can return a list of related notes instead of only the target note.
@@ -257,7 +266,7 @@ Use this structure:
 3. Section: `视频数据`
    - Layout: four columns.
    - Fields, left to right: `视频时长`, `评论量`, `收藏量`, `点赞量`.
-   - Use number fields with clear labels and enough spacing.
+   - Use number fields with clear labels and enough spacing. `评论量`, `收藏量`, and `点赞量` must display as integers without decimal places.
 4. Section: `核心总结`
    - Layout: full-width or readable text block before the long transcript.
    - Main field: `核心总结`.
