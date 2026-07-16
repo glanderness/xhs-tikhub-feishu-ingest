@@ -25,10 +25,10 @@ Expected fields:
 
 - `视频标题`
 - `作者` link to the `对标博主` table
-- `作者文本` optional hidden backup text field
 - `视频封面` attachment
 - `视频链接`
 - `视频时长`
+- `发布时间`
 - `简介`
 - `核心总结`
 - `文字内容`
@@ -41,10 +41,31 @@ If the user changes the Base, read its fields first with `lark-cli base +field-l
 
 ## Workflow
 
+Prefer the bundled one-command script for normal ingestion:
+
+```bash
+python /Users/lucas/.codex/skills/xhs-tikhub-feishu-ingest/scripts/ingest_xhs_note.py "<XHS share link or full share text>"
+```
+
+Useful options:
+
+- `--expected-title "<title>"` and `--expected-author "<author>"` add candidate-selection hints.
+- `--summary-text "<核心总结>"` or `--summary-file /path/to/core_summary.txt` overrides the script's automatic summary draft.
+- `--skip-feishu` creates only local artifacts for debugging.
+- `--force-create` creates a new video row even if the script finds a matching existing row.
+
+The script creates/updates local artifacts, resolves the creator, writes or updates the Feishu video row, uploads `cover_original.webp`, reads the row back, and writes `ingest_report.json`. It also avoids duplicate rows by matching `视频链接`, `note_id`, or exact title. Creator reuse is ID-first: `小红书用户ID` -> `小红书号` -> exact `博主名称`.
+
+The script is the unified subtitle parser. It must support both TikHub subtitle shapes: a list and a language-grouped object such as `{"zh-CN":[...],"source":[...]}`.
+
+For production-quality ingestion, first run the script with `--skip-feishu` when needed, read `transcript_zh-CN.txt`, write a polished `core_summary.txt` according to the Core Summary rules, then rerun with `--summary-file <folder>/core_summary.txt`. The script's built-in summary is a fallback draft, not the preferred final summary when full subtitles are available.
+
+Manual fallback workflow:
+
 1. Create a local folder under:
    `/Users/lucas/Documents/国内自媒体运营/小红书笔记采集/xhslink_<code>`
 2. Read TikHub config from `~/.codex/mcp/tikhub/tikhub.env`; do not print secrets.
-3. Call TikHub App V2 detail endpoints with `share_text=<share link>`:
+3. Preserve the original user-provided `xhslink.com` short link, then call TikHub App V2 detail endpoints with `share_text=<share link>`:
    - Try `/api/v1/xiaohongshu/app_v2/get_video_note_detail`.
    - If needed, try `/api/v1/xiaohongshu/app_v2/get_image_note_detail` or `get_mixed_note_detail`.
    - Save every response as `raw_<kind>.json`.
@@ -54,6 +75,8 @@ If the user changes the Base, read its fields first with `lark-cli base +field-l
    - If the creator already exists, reuse that creator record id for the video `作者` link field.
    - If the creator is new, call TikHub `/api/v1/xiaohongshu/app_v2/get_user_info?user_id=<id>`, create a new `对标博主` row, upload avatar/background attachments, then use the new record id.
 6. Write `note_metadata.json`, `note.md`, downloaded cover assets, `transcript_zh-CN.txt`, and `core_summary.txt`.
+   - Store both `original_share_link` and TikHub's `canonical_link` in `note_metadata.json`.
+   - Store publish timing as `publish_time_raw`, `publish_time_cst`, and `publish_date`.
 7. Create the Feishu video record with text/number/link fields first. `作者` must be `[{"id":"<creator_record_id>"}]`.
 8. Upload only the cover file with `lark-cli base +record-upload-attachment`.
 9. Read the Feishu record back and verify field values, linked author, and attachment names/tokens.
@@ -65,8 +88,8 @@ Keep quality, but avoid slow redundant work.
 - Target runtime for one normal video: about 1-2 minutes after TikHub responds.
 - Call `get_video_note_detail` first. Only call image/mixed detail endpoints if the video endpoint fails or returns no usable target note.
 - Do not print large raw JSON, full transcripts, or full record payloads to the terminal. Save them to files and print short summaries only.
-- Use one local extraction script to parse TikHub data, download `cover_original.webp`, download subtitles, create `transcript_zh-CN.txt`, generate `核心总结`, write the video link, and write metadata.
-- Do not download or upload the video file by default. Use `share_info.link` / canonical Xiaohongshu URL in `视频链接` instead.
+- Use `scripts/ingest_xhs_note.py` to parse TikHub data, download `cover_original.webp`, download subtitles, create `transcript_zh-CN.txt`, generate or accept `核心总结`, write the video link, and write metadata.
+- Do not download or upload the video file by default. Use a browser-openable Xiaohongshu share URL in Feishu `视频链接` so Lucas can click through from the table.
 - Do not include `视频文件本身` in new-record payloads unless Lucas explicitly asks for a local video archive. Leaving that field empty is the expected fast path.
 - Download independent assets in parallel when practical: cover and subtitles do not depend on each other.
 - Do one final record readback after all writes, not repeated readbacks after every small step unless debugging.
@@ -77,9 +100,9 @@ Keep quality, but avoid slow redundant work.
 
 - `视频标题`: TikHub `title`
 - `作者`: link-cell value pointing to the creator record in `对标博主`, using `[{"id":"<creator_record_id>"}]`
-- `作者文本`: optional hidden backup of `user.nickname`; keep it for old rows and debugging, but do not show it in normal views
-- `视频链接`: canonical Xiaohongshu detail URL, preferably `share_info.link`; fall back to the original xhslink share URL
+- `视频链接`: browser-openable Xiaohongshu share URL. Prefer the original user-provided Xiaohongshu URL with `xsec_token` / `xsec_source`; if the input was an `xhslink.com` short link, write TikHub `share_info.link` / `canonical_link` after resolving. Use no-query `explore/<note_id>` only as a last resort.
 - `视频时长`: formatted duration such as `3:31`; derive from the selected video's duration fields
+- `发布时间`: date-only value from the note publish timestamp. Prefer TikHub selected note `time`; convert from Unix seconds to Asia/Shanghai date and write as `YYYY-MM-DD 00:00:00` for Feishu's date/datetime field.
 - `简介`: full TikHub `desc`, not a shortened summary
 - `核心总结`: bullet-point summary of the video's core framework and key ideas, 300 Chinese characters or fewer
 - `文字内容`: cleaned `zh-CN` subtitle text; use `source` subtitle if `zh-CN` is absent
@@ -88,6 +111,16 @@ Keep quality, but avoid slow redundant work.
 - `收藏量`: `collected_count`
 - `视频封面`: correct cover file; see cover rules below
 - `视频文件本身`: legacy attachment field; leave empty for new records unless the user explicitly asks to upload the video file
+
+## Video Link Policy
+
+The Feishu `视频链接` field is for Lucas to click and watch the video in a browser. Openability beats visual cleanliness.
+
+- Do not strip `xsec_token`, `xsec_source`, `app_platform`, `app_version`, `author_share`, `share_from_user_hidden`, or similar share-context parameters from Xiaohongshu URLs. Many notes show a QR-code page or "当前笔记暂时无法浏览" when opened as a bare `explore/<note_id>` URL.
+- If Lucas provides a full Xiaohongshu share URL, write that original URL to Feishu.
+- If Lucas provides an `xhslink.com/o/<code>` short link, resolve it through TikHub and write TikHub `share_info.link` / `canonical_link` to Feishu. Keep the original short link in `note_metadata.json` for audit.
+- Use `https://www.xiaohongshu.com/explore/<note_id>` only when no contextual share URL is available.
+- During final readback, inspect `视频链接`. If it is a bare no-query `explore/<note_id>` or `discovery/item/<note_id>`, update it to the original full share URL or TikHub canonical link before responding.
 
 ## Benchmark Creator Table
 
@@ -98,15 +131,18 @@ Keep creator-level analysis in a second table inside the same Feishu Base.
 - Purpose: store creator profiles separately from individual video notes, then link video notes to the relevant creator through the `视频笔记`.`作者` link field.
 - Required fields:
   - `博主名称`: text primary field
+  - `小红书用户ID`: text stable user id from `user.userid` / `user.id`; use this as the first creator identity key
+  - `小红书号`: text Red ID from `user.red_id` / profile `red_id`; use this as the second creator identity key
+  - `主页链接`: text URL to the creator's Xiaohongshu profile
   - `头像`: attachment
   - `简介`: text
   - `主页背景图`: attachment
   - `粉丝量`: number, `precision: 0`
   - `获赞和收藏量`: number, `precision: 0`
+  - `最近更新时间`: datetime, refreshed whenever the creator row is created or enriched
 - Use integer display for creator metrics. Do not show `.00` or `.0`.
 - For attachments, save avatar and background assets locally before uploading them to the record.
 - In `视频笔记`, the visible `作者` field must be the link field to `对标博主`, not a plain text field.
-- Keep the old plain-text author field only as hidden `作者文本` if it already exists; do not use it as the normal author column.
 - When creating or repairing the author link field on `视频笔记`, use Feishu's `link` field with `link_table`, for example `{"name":"作者","type":"link","link_table":"tblwou5tJyHf4tMg"}`. Do not use `table_id`; the field-create API rejects it for link fields.
 - When writing a link-cell value, use `[{"id":"<creator_record_id>"}]`. Do not use `record_id` inside the cell value; Feishu rejects that shape.
 - The CLI currently creates this as a one-way link (`bidirectional: false`). If Lucas wants reverse inline display inside the Feishu UI, document that UI-side adjustment separately instead of blocking ingestion.
@@ -115,12 +151,15 @@ Creator resolution SOP for every video ingestion:
 
 1. Extract the creator identity from the selected note: `user.userid` / `user.id`, `user.nickname`, `user.red_id`, and avatar URL.
 2. Search `对标博主` before creating anything.
-   - Prefer matching by stored user id if such a field exists in the future.
-   - Current table has no user-id field, so match by exact `博主名称`; only create a new creator when no exact existing row is found.
+   - First match exact `小红书用户ID`.
+   - If absent or not found, match exact `小红书号`.
+   - Only then match exact `博主名称` as a fallback, because creators can rename themselves.
 3. If an existing creator row is found, reuse its record id and write the video row's `作者` link to that record.
-4. If the creator is new, call TikHub `get_user_info` with `user_id`, save the raw response under `小红书笔记采集/benchmark_creators/<creator_slug>/`, download avatar/background assets, create the `对标博主` row, upload attachments, and then write the video row's `作者` link.
-5. If `get_user_info` fails, create a minimal creator row from the video detail data (`博主名称`, avatar when available), link the video to it, and note that the creator profile needs enrichment later.
-6. Never leave the visible `作者` field as plain text. If a backup is useful, write the nickname to hidden `作者文本`, but the visible author column must be the linked creator record.
+4. Build `主页链接` as `https://www.xiaohongshu.com/user/profile/<user_id>` when `user_id` is available. If only `red_id` is available, leave the field blank rather than guessing an unsupported profile URL.
+5. If the creator is new, call TikHub `get_user_info` with `user_id`, save the raw response under `小红书笔记采集/benchmark_creators/<creator_slug>/`, download avatar/background assets, create the `对标博主` row including `小红书用户ID`, `小红书号`, `主页链接`, and `最近更新时间`, upload attachments, and then write the video row's `作者` link.
+6. If `get_user_info` returns a transient network/SSL/EOF error or a non-profile response, retry once before creating the creator row. Save both the failed response and the retry response locally.
+7. Only create a minimal creator row from the video detail data (`博主名称`, `主页链接`, avatar when available) after retry also fails. Link the video to it, and note that the creator profile needs enrichment later.
+8. Never write the creator into a separate plain-text author field. The `作者` column in `视频笔记` must be the linked creator record.
 
 Create the benchmark creator table when missing:
 
@@ -128,7 +167,7 @@ Create the benchmark creator table when missing:
 lark-cli base +table-create --as user \
   --base-token OHDKbmvo7aaqUlssdXncKTHCnDc \
   --name "对标博主" \
-  --fields '[{"name":"博主名称","type":"text"},{"name":"头像","type":"attachment"},{"name":"简介","type":"text"},{"name":"主页背景图","type":"attachment"},{"name":"粉丝量","type":"number","style":{"type":"plain","precision":0,"thousands_separator":false,"percentage":false}},{"name":"获赞和收藏量","type":"number","style":{"type":"plain","precision":0,"thousands_separator":false,"percentage":false}}]'
+  --fields '[{"name":"博主名称","type":"text"},{"name":"小红书用户ID","type":"text"},{"name":"小红书号","type":"text"},{"name":"主页链接","type":"text"},{"name":"头像","type":"attachment"},{"name":"简介","type":"text"},{"name":"主页背景图","type":"attachment"},{"name":"粉丝量","type":"number","style":{"type":"plain","precision":0,"thousands_separator":false,"percentage":false}},{"name":"获赞和收藏量","type":"number","style":{"type":"plain","precision":0,"thousands_separator":false,"percentage":false}},{"name":"最近更新时间","type":"datetime","style":{"format":"yyyy/MM/dd HH:mm"}}]'
 ```
 
 Benchmark creator views:
@@ -136,8 +175,8 @@ Benchmark creator views:
 - Rename the default grid view to `表格视图`.
 - Create a gallery view named `卡片视图`.
 - Set `卡片视图` cover field to `主页背景图`, not `头像`; the background image gives each creator card a stronger profile-page feel.
-- In `卡片视图`, show fields in this order: `博主名称`, `头像`, `简介`, `粉丝量`, `获赞和收藏量`.
-- In `表格视图`, show fields in this order: `博主名称`, `头像`, `简介`, `主页背景图`, `粉丝量`, `获赞和收藏量`.
+- In `卡片视图`, show fields in this order: `博主名称`, `主页链接`, `头像`, `简介`, `粉丝量`, `获赞和收藏量`, `最近更新时间`.
+- In `表格视图`, show fields in this order: `博主名称`, `小红书用户ID`, `小红书号`, `主页链接`, `头像`, `简介`, `主页背景图`, `粉丝量`, `获赞和收藏量`, `最近更新时间`.
 - Keep creator metric fields as integers with no decimals.
 
 ## Interaction Number Fields
@@ -158,7 +197,7 @@ TikHub can return a list of related notes instead of only the target note.
 - Treat the first usable item as a candidate, not proof. Confirm it has the expected note id, title, author, or canonical `share_info.link` for the submitted xhslink.
 - If there are several candidates, choose the one whose `share_info.link` or `note_id` corresponds to the share link. If the share link resolution is ambiguous, prefer the item whose title/author matches the opened target context.
 - Save the full raw response before filtering so selection can be audited later.
-- Put the chosen `note_id`, title, author, canonical link, and interaction counts into `note_metadata.json`.
+- Put the chosen `note_id`, title, author, original short link, canonical link, and interaction counts into `note_metadata.json`.
 
 ## Duration
 
@@ -169,6 +208,20 @@ Capture each video's duration and write it to Feishu.
 - If only stream metadata is available, use `video_info_v2.media.stream.h264[0].duration` or another stream `duration`; treat values over 1000 as milliseconds and round to seconds.
 - Store both `duration_seconds` and `duration_display` in `note_metadata.json`.
 - Write `duration_display` to the Feishu `视频时长` field. Format under one hour as `M:SS`; format one hour or longer as `H:MM:SS`.
+
+## Publish Date
+
+Capture each video's publish date and write it to Feishu.
+
+- Field name: `发布时间`.
+- Feishu field type should be date/datetime with display format `yyyy/MM/dd`.
+- Prefer the selected note's top-level TikHub `time` field. It is a Unix seconds timestamp.
+- Convert the timestamp to Asia/Shanghai date. Store in local metadata:
+  - `publish_time_raw`: original integer timestamp.
+  - `publish_time_cst`: ISO-like timestamp with `+08:00`, for example `2026-07-04T18:01:47+08:00`.
+  - `publish_date`: date-only string, for example `2026-07-04`.
+- Write `发布时间` to Feishu as `YYYY-MM-DD 00:00:00` so it behaves as a sortable/filterable date field while visually showing only the年月日.
+- Do not use `last_update_time` as publish date unless `time` is missing. If falling back, record `publish_date_source` in metadata.
 
 ## Cover Rules
 
@@ -189,10 +242,12 @@ Be strict here. TikHub may return several image-like fields.
 
 ## Video And Subtitles
 
-- Use `share_info.link` as the default watch link in `视频链接`.
+- Use a contextual Xiaohongshu share URL as the default watch link in Feishu `视频链接`; it needs to open the right video in a desktop browser when clicked.
+- Keep the original user input, short link, and TikHub canonical link in local metadata for auditing and candidate verification.
 - Do not download `video.mp4` or upload video attachments unless the user explicitly asks for local/video-file archival.
 - If the user explicitly asks for the video file, prefer `video_info_v2.media.stream.h264[0].master_url` for `video.mp4`; use backup URLs on failure. Use H.264 over H.265 for compatibility with Feishu previews.
 - Save subtitles from `video_info_v2.media.video.subtitles`.
+- TikHub subtitle data may be a list or a language-grouped object such as `{"zh-CN":[...],"source":[...],"en-US":[...]}`. Support both shapes and prefer `zh-CN`, then `source`, then any available subtitle.
 - Convert SRT to clean text by removing indexes and timestamp lines, preserving sentence order.
 - If no subtitles exist, leave `视频的文字内容，基于字幕` blank or explain that the note has no subtitle data.
 
@@ -229,7 +284,7 @@ Create row:
 lark-cli base +record-batch-create --as user \
   --base-token OHDKbmvo7aaqUlssdXncKTHCnDc \
   --table-id tbl1gfUEArDaQQun \
-  --json '{"fields":["视频标题","作者","视频链接","视频时长","简介","核心总结","文字内容","点赞量","评论量","收藏量"],"rows":[[...]]}'
+  --json '{"fields":["视频标题","作者","视频链接","视频时长","发布时间","简介","核心总结","文字内容","点赞量","评论量","收藏量"],"rows":[[...]]}'
 ```
 
 Save this payload locally as `feishu_record_payload.json`, and save the creation response as `feishu_record_create.json`.
@@ -281,11 +336,12 @@ Before final response, verify and report:
 - Title and linked author
 - Like/comment/favorite counts
 - Video duration
+- Publish date
 - `核心总结` exists and is no more than 300 Chinese characters
 - Full `简介` length or trailing content if completeness was questioned
 - Subtitle text exists when available
 - `视频封面` has a single correct cover attachment
-- `视频链接` exists and points to the canonical Xiaohongshu note URL
+- `视频链接` exists and uses a contextual Xiaohongshu share URL. Avoid bare no-query `explore/<note_id>` links unless no contextual link exists.
 - `视频文件本身` is empty for normal runs unless the user explicitly requested video file archival
 - Local folder path
 - Feishu Base link: `https://scnitw8fqog4.feishu.cn/base/OHDKbmvo7aaqUlssdXncKTHCnDc`
@@ -308,8 +364,8 @@ Grid view is for scanning and will truncate long text cells. Do not treat this a
 - Keep `表格视图` compact for scanning.
 - For reading long `简介` or `文字内容` fields, create or maintain a gallery/card view named `卡片视图`.
 - Set `视频封面` as the gallery cover field.
-- Recommended visible field order: `视频标题`, `作者`, `视频封面`, `视频链接`, `视频时长`, `点赞量`, `评论量`, `收藏量`, `核心总结`, `简介`, `文字内容`, `视频文件本身`. Hide `作者文本` from normal views.
-- In `表格视图`, keep the metric columns visually consistent: `点赞量`, `评论量`, `收藏量`, and `视频时长` should be centered in their cells, with compact column widths.
+- Recommended visible field order: `视频标题`, `作者`, `视频封面`, `视频链接`, `视频时长`, `发布时间`, `点赞量`, `评论量`, `收藏量`, `核心总结`, `简介`, `文字内容`, `视频文件本身`.
+- In `表格视图`, keep the metric/date columns visually consistent: `视频时长`, `发布时间`, `点赞量`, `评论量`, and `收藏量` should be centered in their cells, with compact column widths.
 - If view configuration by field name fails, list fields and retry with field IDs.
 
 ## Record Detail Layout
@@ -329,9 +385,9 @@ Use this structure:
    - Show `视频链接` as a clickable URL so Lucas can jump to Xiaohongshu to watch.
 3. Section: `视频数据`
    - Layout: four columns.
-   - Fields, left to right: `视频时长`, `评论量`, `收藏量`, `点赞量`.
-   - Use number fields with clear labels and enough spacing. `评论量`, `收藏量`, and `点赞量` must display as integers without decimal places.
-   - Center-align `视频时长`, `评论量`, `收藏量`, and `点赞量` so the metric block reads as a unified group.
+   - Fields, left to right: `发布时间`, `视频时长`, `评论量`, `收藏量`, `点赞量`.
+   - Use date/number fields with clear labels and enough spacing. `发布时间` must show 年月日 only; `评论量`, `收藏量`, and `点赞量` must display as integers without decimal places.
+   - Center-align `发布时间`, `视频时长`, `评论量`, `收藏量`, and `点赞量` so the metric block reads as a unified group.
 4. Section: `核心总结`
    - Layout: full-width or readable text block before the long transcript.
    - Main field: `核心总结`.
@@ -350,3 +406,24 @@ Do not overwrite an existing customized detail layout unless the user explicitly
 ## Maintenance Rule
 
 When the user says to optimize, correct, or sync lessons back into this workflow, update this skill immediately. Add concrete constraints learned from the issue, especially around field mapping, cover selection, Feishu attachment behavior, or TikHub response quirks.
+
+Chrome MVP synchronization:
+
+- Local MVP path: `/Users/lucas/Documents/国内自媒体运营/xhs-feishu-clipper-mvp`.
+- This Skill is the source of truth for the MVP's backend behavior.
+- Whenever this Skill changes in a way that affects ingestion behavior, also update `xhs-feishu-clipper-mvp/server/server.js`.
+- After reviewing and updating the MVP backend against the current Skill, run:
+
+```bash
+cd /Users/lucas/Documents/国内自媒体运营/xhs-feishu-clipper-mvp/server
+npm run sync-skill
+```
+
+- Before using the plugin after a Skill change, verify:
+
+```bash
+cd /Users/lucas/Documents/国内自媒体运营/xhs-feishu-clipper-mvp/server
+npm run check-skill
+```
+
+- The MVP `/health` endpoint returns `skill_sync.skill_synced`; if it is `false`, do not assume the plugin matches the Skill.
