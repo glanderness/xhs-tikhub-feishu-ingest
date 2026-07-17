@@ -1,6 +1,6 @@
 ---
 name: xhs-tikhub-feishu-ingest
-description: Collect Xiaohongshu/RedNote note data through TikHub and append it into Lucas's Feishu Base video-material table. Use when the user asks to采集/抓取/同步/入库小红书帖子 or videos into 飞书多维表格, especially with xhslink.com links, TikHub, note cover/video/subtitle data, interaction metrics, or requests to update this ingestion workflow/skill.
+description: Collect Xiaohongshu/RedNote note data through TikHub, save local artifacts, and optionally append it into a user-configured Feishu Base. Use when the user asks to采集/抓取/同步/入库小红书帖子 or videos, configure TikHub or Feishu ingestion, create the required Base schema, or update this workflow/skill.
 ---
 
 # XHS TikHub Feishu Ingest
@@ -9,17 +9,17 @@ description: Collect Xiaohongshu/RedNote note data through TikHub and append it 
 
 Use this skill to turn one or more Xiaohongshu share links into local artifacts and Feishu Base records. Preserve raw TikHub responses, choose the correct cover, upload attachments, and always verify the final Feishu row.
 
-## Current Target
+## Configuration
 
-Default to the existing Base unless the user asks for a new one:
+Load configuration in this priority order: command options, environment variables, `config.toml`, then portable defaults. Use `~/.config/xhs-tikhub-feishu-ingest/config.toml` by default or pass `--config <path>`.
+
+Use the repository's `config.example.toml` as the configuration template. Never commit a populated user configuration file.
+
+The default names are:
 
 - Base: `小红书视频素材库`
-- URL: `https://scnitw8fqog4.feishu.cn/base/OHDKbmvo7aaqUlssdXncKTHCnDc`
-- `base_token`: `OHDKbmvo7aaqUlssdXncKTHCnDc`
-- Table: `视频笔记`
-- `table_id`: `tbl1gfUEArDaQQun`
-- Benchmark creator table: `对标博主`
-- `benchmark_table_id`: `tblwou5tJyHf4tMg`
+- Video table: `视频笔记`
+- Creator table: `对标博主`
 
 Expected fields:
 
@@ -41,11 +41,18 @@ If the user changes the Base, read its fields first with `lark-cli base +field-l
 
 ## Workflow
 
-Prefer the bundled one-command script for normal ingestion:
+Use the unified command entry point:
 
 ```bash
-python /Users/lucas/.codex/skills/xhs-tikhub-feishu-ingest/scripts/ingest_xhs_note.py "<XHS share link or full share text>"
+./xhs-ingest init
+./xhs-ingest doctor
+./xhs-ingest setup-feishu
+./xhs-ingest run "<XHS share link or full share text>"
 ```
+
+Use `./xhs-ingest setup-feishu --check` to verify an existing Base without changing it. Run `setup-feishu` without `--check` to create missing tables, fields, and views, then save the resulting IDs into the selected local configuration file.
+
+Keep `python scripts/ingest_xhs_note.py ...` as a backward-compatible direct ingestion entry point.
 
 Useful options:
 
@@ -62,9 +69,8 @@ For production-quality ingestion, first run the script with `--skip-feishu` when
 
 Manual fallback workflow:
 
-1. Create a local folder under:
-   `/Users/lucas/Documents/国内自媒体运营/小红书笔记采集/xhslink_<code>`
-2. Read TikHub config from `~/.codex/mcp/tikhub/tikhub.env`; do not print secrets.
+1. Create a local folder under the configured `output.root`, using `xhslink_<code>` or `xhs_<note_id>`.
+2. Read TikHub configuration through `scripts/xhs_config.py`; do not print the API key.
 3. Preserve the original user-provided `xhslink.com` short link, then call TikHub App V2 detail endpoints with `share_text=<share link>`:
    - Try `/api/v1/xiaohongshu/app_v2/get_video_note_detail`.
    - If needed, try `/api/v1/xiaohongshu/app_v2/get_image_note_detail` or `get_mixed_note_detail`.
@@ -89,11 +95,11 @@ Keep quality, but avoid slow redundant work.
 - Call `get_video_note_detail` first. Only call image/mixed detail endpoints if the video endpoint fails or returns no usable target note.
 - Do not print large raw JSON, full transcripts, or full record payloads to the terminal. Save them to files and print short summaries only.
 - Use `scripts/ingest_xhs_note.py` to parse TikHub data, download `cover_original.webp`, download subtitles, create `transcript_zh-CN.txt`, generate or accept `核心总结`, write the video link, and write metadata.
-- Do not download or upload the video file by default. Use a browser-openable Xiaohongshu share URL in Feishu `视频链接` so Lucas can click through from the table.
-- Do not include `视频文件本身` in new-record payloads unless Lucas explicitly asks for a local video archive. Leaving that field empty is the expected fast path.
+- Do not download or upload the video file by default. Use a browser-openable Xiaohongshu share URL in Feishu `视频链接` so the user can click through from the table.
+- Do not include `视频文件本身` in new-record payloads unless the user explicitly asks for a local video archive. Leaving that field empty is the expected fast path.
 - Download independent assets in parallel when practical: cover and subtitles do not depend on each other.
 - Do one final record readback after all writes, not repeated readbacks after every small step unless debugging.
-- Cache stable Feishu IDs from this skill (`base_token`, `table_id`, common field IDs) and only list fields again when a write fails or the user changed the table.
+- Cache stable Feishu IDs in the user's local configuration and only list fields again when a write fails or the user changed the table.
 - Add lightweight timing logs around TikHub request, local asset downloads, Feishu record create, attachment upload, and final verification when the user asks about speed.
 
 ## Field Mapping
@@ -114,11 +120,11 @@ Keep quality, but avoid slow redundant work.
 
 ## Video Link Policy
 
-The Feishu `视频链接` field is for Lucas to click and watch the video in a browser. Openability beats visual cleanliness.
+The Feishu `视频链接` field is for the user to click and watch the video in a browser. Openability beats visual cleanliness.
 
 - Do not strip `xsec_token`, `xsec_source`, `app_platform`, `app_version`, `author_share`, `share_from_user_hidden`, or similar share-context parameters from Xiaohongshu URLs. Many notes show a QR-code page or "当前笔记暂时无法浏览" when opened as a bare `explore/<note_id>` URL.
-- If Lucas provides a full Xiaohongshu share URL, write that original URL to Feishu.
-- If Lucas provides an `xhslink.com/o/<code>` short link, resolve it through TikHub and write TikHub `share_info.link` / `canonical_link` to Feishu. Keep the original short link in `note_metadata.json` for audit.
+- If the user provides a full Xiaohongshu share URL, write that original URL to Feishu.
+- If the user provides an `xhslink.com/o/<code>` short link, resolve it through TikHub and write TikHub `share_info.link` / `canonical_link` to Feishu. Keep the original short link in `note_metadata.json` for audit.
 - Use `https://www.xiaohongshu.com/explore/<note_id>` only when no contextual share URL is available.
 - During final readback, inspect `视频链接`. If it is a bare no-query `explore/<note_id>` or `discovery/item/<note_id>`, update it to the original full share URL or TikHub canonical link before responding.
 
@@ -127,7 +133,7 @@ The Feishu `视频链接` field is for Lucas to click and watch the video in a b
 Keep creator-level analysis in a second table inside the same Feishu Base.
 
 - Table name: `对标博主`
-- Table id: `tblwou5tJyHf4tMg`
+- Table id: use the configured `feishu.creator_table_id`
 - Purpose: store creator profiles separately from individual video notes, then link video notes to the relevant creator through the `视频笔记`.`作者` link field.
 - Required fields:
   - `博主名称`: text primary field
@@ -143,9 +149,9 @@ Keep creator-level analysis in a second table inside the same Feishu Base.
 - Use integer display for creator metrics. Do not show `.00` or `.0`.
 - For attachments, save avatar and background assets locally before uploading them to the record.
 - In `视频笔记`, the visible `作者` field must be the link field to `对标博主`, not a plain text field.
-- When creating or repairing the author link field on `视频笔记`, use Feishu's `link` field with `link_table`, for example `{"name":"作者","type":"link","link_table":"tblwou5tJyHf4tMg"}`. Do not use `table_id`; the field-create API rejects it for link fields.
+- When creating or repairing the author link field on `视频笔记`, use Feishu's `link` field with `link_table`, for example `{"name":"作者","type":"link","link_table":"<creator_table_id>"}`. Do not use `table_id`; the field-create API rejects it for link fields.
 - When writing a link-cell value, use `[{"id":"<creator_record_id>"}]`. Do not use `record_id` inside the cell value; Feishu rejects that shape.
-- The CLI currently creates this as a one-way link (`bidirectional: false`). If Lucas wants reverse inline display inside the Feishu UI, document that UI-side adjustment separately instead of blocking ingestion.
+- The CLI currently creates this as a one-way link (`bidirectional: false`). If the user wants reverse inline display inside the Feishu UI, document that UI-side adjustment separately instead of blocking ingestion.
 
 Creator resolution SOP for every video ingestion:
 
@@ -165,7 +171,7 @@ Create the benchmark creator table when missing:
 
 ```bash
 lark-cli base +table-create --as user \
-  --base-token OHDKbmvo7aaqUlssdXncKTHCnDc \
+  --base-token <base_token> \
   --name "对标博主" \
   --fields '[{"name":"博主名称","type":"text"},{"name":"小红书用户ID","type":"text"},{"name":"小红书号","type":"text"},{"name":"主页链接","type":"text"},{"name":"头像","type":"attachment"},{"name":"简介","type":"text"},{"name":"主页背景图","type":"attachment"},{"name":"粉丝量","type":"number","style":{"type":"plain","precision":0,"thousands_separator":false,"percentage":false}},{"name":"获赞和收藏量","type":"number","style":{"type":"plain","precision":0,"thousands_separator":false,"percentage":false}},{"name":"最近更新时间","type":"datetime","style":{"format":"yyyy/MM/dd HH:mm"}}]'
 ```
@@ -262,7 +268,7 @@ Requirements:
 - Use numbered sections, not `框架一` / `框架二`.
 - Keep it concise: no more than 300 Chinese characters.
 - Write naturally, in plain spoken Chinese; avoid stiff report language.
-- Make it scannable enough that Lucas can quickly understand what the video says and how it unfolds.
+- Make it scannable enough that the user can quickly understand what the video says and how it unfolds.
 - Prefer this shape:
   - `1、<小标题>`
   - `<一句解释>`
@@ -282,8 +288,8 @@ Create row:
 
 ```bash
 lark-cli base +record-batch-create --as user \
-  --base-token OHDKbmvo7aaqUlssdXncKTHCnDc \
-  --table-id tbl1gfUEArDaQQun \
+  --base-token <base_token> \
+  --table-id <video_table_id> \
   --json '{"fields":["视频标题","作者","视频链接","视频时长","发布时间","简介","核心总结","文字内容","点赞量","评论量","收藏量"],"rows":[[...]]}'
 ```
 
@@ -293,8 +299,8 @@ Upload attachments from the asset directory with relative paths:
 
 ```bash
 lark-cli base +record-upload-attachment --as user \
-  --base-token OHDKbmvo7aaqUlssdXncKTHCnDc \
-  --table-id tbl1gfUEArDaQQun \
+  --base-token <base_token> \
+  --table-id <video_table_id> \
   --record-id <record_id> \
   --field-id "视频封面" \
   --file ./cover_original.webp
@@ -306,8 +312,8 @@ To fix a wrong attachment:
 
 ```bash
 lark-cli base +record-remove-attachment --as user \
-  --base-token OHDKbmvo7aaqUlssdXncKTHCnDc \
-  --table-id tbl1gfUEArDaQQun \
+  --base-token <base_token> \
+  --table-id <video_table_id> \
   --record-id <record_id> \
   --field-id "视频封面" \
   --file-token <token> \
@@ -320,8 +326,8 @@ Read back the row once after all writes:
 
 ```bash
 lark-cli base +record-get --as user \
-  --base-token OHDKbmvo7aaqUlssdXncKTHCnDc \
-  --table-id tbl1gfUEArDaQQun \
+  --base-token <base_token> \
+  --table-id <video_table_id> \
   --record-id <record_id> \
   --format json
 ```
@@ -344,11 +350,11 @@ Before final response, verify and report:
 - `视频链接` exists and uses a contextual Xiaohongshu share URL. Avoid bare no-query `explore/<note_id>` links unless no contextual link exists.
 - `视频文件本身` is empty for normal runs unless the user explicitly requested video file archival
 - Local folder path
-- Feishu Base link: `https://scnitw8fqog4.feishu.cn/base/OHDKbmvo7aaqUlssdXncKTHCnDc`
+- Feishu Base link from the configured `feishu.base_url`
 
 ## Final Response
 
-After every successful ingestion, include both places Lucas needs next:
+After every successful ingestion, include both places the user needs next:
 
 - Local folder path for the saved artifacts.
 - Feishu Base link for opening the table.
@@ -370,7 +376,7 @@ Grid view is for scanning and will truncate long text cells. Do not treat this a
 
 ## Record Detail Layout
 
-When creating a new Feishu Base or rebuilding a table for this workflow, configure the record detail page with Lucas's custom layout. This layout is meant for clear per-video review and should be preserved once the user has manually tuned it.
+When creating a new Feishu Base or rebuilding a table for this workflow, configure the record detail page with the recommended layout. Preserve an existing layout once the user has manually tuned it.
 
 Use this structure:
 
@@ -382,7 +388,7 @@ Use this structure:
    - Fields, left to right: `视频标题`, `作者`, `视频封面`, `视频链接`.
    - Use a readable medium-large value size for title/author.
    - Show the cover as a visual preview card.
-   - Show `视频链接` as a clickable URL so Lucas can jump to Xiaohongshu to watch.
+   - Show `视频链接` as a clickable URL so the user can jump to Xiaohongshu to watch.
 3. Section: `视频数据`
    - Layout: four columns.
    - Fields, left to right: `发布时间`, `视频时长`, `评论量`, `收藏量`, `点赞量`.
@@ -407,23 +413,8 @@ Do not overwrite an existing customized detail layout unless the user explicitly
 
 When the user says to optimize, correct, or sync lessons back into this workflow, update this skill immediately. Add concrete constraints learned from the issue, especially around field mapping, cover selection, Feishu attachment behavior, or TikHub response quirks.
 
-Chrome MVP synchronization:
+Companion integrations:
 
-- Local MVP path: `/Users/lucas/Documents/国内自媒体运营/xhs-feishu-clipper-mvp`.
-- This Skill is the source of truth for the MVP's backend behavior.
-- Whenever this Skill changes in a way that affects ingestion behavior, also update `xhs-feishu-clipper-mvp/server/server.js`.
-- After reviewing and updating the MVP backend against the current Skill, run:
-
-```bash
-cd /Users/lucas/Documents/国内自媒体运营/xhs-feishu-clipper-mvp/server
-npm run sync-skill
-```
-
-- Before using the plugin after a Skill change, verify:
-
-```bash
-cd /Users/lucas/Documents/国内自媒体运营/xhs-feishu-clipper-mvp/server
-npm run check-skill
-```
-
-- The MVP `/health` endpoint returns `skill_sync.skill_synced`; if it is `false`, do not assume the plugin matches the Skill.
+- Treat this Skill and its CLI as the source of truth for ingestion behavior.
+- Point companion browser extensions or services to the same configuration and command entry point instead of duplicating field mappings.
+- Verify each companion integration after behavior changes before reporting that it matches the Skill.

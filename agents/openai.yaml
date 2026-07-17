@@ -1,6 +1,6 @@
 interface:
   display_name: "XHS TikHub Feishu Ingest"
-  short_description: "Sync XHS notes into a Feishu Base"
-  default_prompt: "Use $xhs-tikhub-feishu-ingest to collect this Xiaohongshu link and append it to the Feishu Base."
+  short_description: "Save XHS notes locally or sync them to Feishu"
+  default_prompt: "Use $xhs-tikhub-feishu-ingest to collect this Xiaohongshu link and save it locally or append it to my configured Feishu Base."
 policy:
   allow_implicit_invocation: true

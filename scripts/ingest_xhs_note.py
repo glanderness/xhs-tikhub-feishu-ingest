@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect one Xiaohongshu note through TikHub and append/update Lucas's Feishu Base."""
+"""Collect one Xiaohongshu note through TikHub and optionally update a Feishu Base."""
 
 from __future__ import annotations
 
@@ -15,16 +15,9 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from html import unescape
-from typing import Any
+from typing import Any, Sequence
 
-
-BASE_TOKEN = "OHDKbmvo7aaqUlssdXncKTHCnDc"
-VIDEO_TABLE_ID = "tbl1gfUEArDaQQun"
-CREATOR_TABLE_ID = "tblwou5tJyHf4tMg"
-BASE_URL = "https://scnitw8fqog4.feishu.cn/base/OHDKbmvo7aaqUlssdXncKTHCnDc"
-DEFAULT_OUTPUT_ROOT = pathlib.Path("/Users/lucas/Documents/国内自媒体运营/小红书笔记采集")
-TIKHUB_ENV = pathlib.Path.home() / ".codex/mcp/tikhub/tikhub.env"
-
+from xhs_config import resolve_settings
 
 VIDEO_FIELDS = [
     "视频标题",
@@ -54,17 +47,6 @@ CREATOR_FIELDS = [
 
 def eprint(*parts: Any) -> None:
     print(*parts, file=sys.stderr)
-
-
-def load_env(path: pathlib.Path) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for raw in path.read_text().splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        values[key.strip()] = value.strip().strip('"').strip("'")
-    return values
 
 
 def http_json(url: str, headers: dict[str, str], timeout: int = 60) -> dict[str, Any]:
@@ -763,22 +745,39 @@ def upload_cover_if_needed(base_token: str, video_table_id: str, record_id: str,
     (out_dir / "feishu_cover_attachment.json").write_text(output)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Collect a Xiaohongshu note and write it to Lucas's Feishu Base.")
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Collect a Xiaohongshu note and optionally write it to a Feishu Base.")
     parser.add_argument("share_text", help="Xiaohongshu share URL, xhslink URL, or full share text")
+    parser.add_argument("--config", type=pathlib.Path, help="Path to config.toml")
     parser.add_argument("--expected-title", default="", help="Optional title hint for candidate selection")
     parser.add_argument("--expected-author", default="", help="Optional author hint for candidate selection")
     parser.add_argument("--summary-file", type=pathlib.Path, help="Use this file as 核心总结")
     parser.add_argument("--summary-text", default="", help="Use this text as 核心总结")
-    parser.add_argument("--output-root", type=pathlib.Path, default=DEFAULT_OUTPUT_ROOT)
-    parser.add_argument("--base-token", default=BASE_TOKEN)
-    parser.add_argument("--video-table-id", default=VIDEO_TABLE_ID)
-    parser.add_argument("--creator-table-id", default=CREATOR_TABLE_ID)
+    parser.add_argument("--output-root", type=pathlib.Path)
+    parser.add_argument("--tikhub-api-key")
+    parser.add_argument("--tikhub-base-url")
+    parser.add_argument("--tikhub-env-file", type=pathlib.Path)
+    parser.add_argument("--base-token")
+    parser.add_argument("--video-table-id")
+    parser.add_argument("--creator-table-id")
+    parser.add_argument("--base-url")
     parser.add_argument("--skip-feishu", action="store_true", help="Only create local artifacts")
     parser.add_argument("--force-create", action="store_true", help="Create a new Feishu row even if a matching row exists")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    env = load_env(TIKHUB_ENV)
+    settings = resolve_settings(vars(args), config_path=args.config)
+    env = settings.tikhub_env
+    if not settings.tikhub_api_key:
+        raise RuntimeError(
+            "TikHub API key is missing. Set TIKHUB_API_KEY or add tikhub.api_key to config.toml."
+        )
+    if not args.skip_feishu and not all(
+        [settings.feishu_base_token, settings.feishu_video_table_id, settings.feishu_creator_table_id]
+    ):
+        raise RuntimeError(
+            "Feishu configuration is incomplete. Set base_token, video_table_id, and creator_table_id, "
+            "or use --skip-feishu."
+        )
     note_id_hint = extract_note_id(args.share_text)
     xhslink_code = extract_xhslink_code(args.share_text)
 
@@ -794,7 +793,7 @@ def main() -> int:
     watch_link = watch_video_link(args.share_text, note_id, canonical)
 
     folder_name = f"xhslink_{xhslink_code}" if xhslink_code else f"xhs_{note_id}"
-    out_dir = args.output_root / folder_name
+    out_dir = settings.output_root / folder_name
     assets_dir = out_dir / "assets"
     out_dir.mkdir(parents=True, exist_ok=True)
     assets_dir.mkdir(parents=True, exist_ok=True)
@@ -864,7 +863,7 @@ def main() -> int:
     report: dict[str, Any] = {
         "ok": True,
         "local_folder": str(out_dir),
-        "base_url": BASE_URL,
+        "base_url": settings.feishu_base_url,
         "note_id": note_id,
         "title": title,
         "author": author_name,
@@ -883,14 +882,20 @@ def main() -> int:
         creator_user_id = str(user.get("userid") or user.get("id") or "")
         creator_red_id = str(user.get("red_id") or "")
         creator_record_id = find_creator(
-            args.base_token,
-            args.creator_table_id,
+            settings.feishu_base_token,
+            settings.feishu_creator_table_id,
             author_name,
             creator_user_id,
             creator_red_id,
         )
         if not creator_record_id:
-            creator_record_id = create_creator(args.base_token, args.creator_table_id, env, user, args.output_root)
+            creator_record_id = create_creator(
+                settings.feishu_base_token,
+                settings.feishu_creator_table_id,
+                env,
+                user,
+                settings.output_root,
+            )
         fields = {
             "视频标题": title,
             "作者": [{"id": creator_record_id}],
@@ -905,16 +910,25 @@ def main() -> int:
             "收藏量": collected,
         }
         video_record_id, action = create_or_update_video(
-            args.base_token,
-            args.video_table_id,
+            settings.feishu_base_token,
+            settings.feishu_video_table_id,
             out_dir,
             fields,
             note_id,
             force_create=args.force_create,
         )
         if cover_file.exists():
-            upload_cover_if_needed(args.base_token, args.video_table_id, video_record_id, out_dir)
-        final_record = get_record(args.base_token, args.video_table_id, video_record_id)
+            upload_cover_if_needed(
+                settings.feishu_base_token,
+                settings.feishu_video_table_id,
+                video_record_id,
+                out_dir,
+            )
+        final_record = get_record(
+            settings.feishu_base_token,
+            settings.feishu_video_table_id,
+            video_record_id,
+        )
         (out_dir / "feishu_record_get.json").write_text(json.dumps(final_record, ensure_ascii=False, indent=2))
         final = record_map(final_record)
         report.update(

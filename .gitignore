@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.pytest_cache/
+.coverage
+
+# User configuration and local environment files
+config.toml
+.env
+*.env
+
+# Generated local artifacts
+xhs-ingest-output/
+xhslink_*/
+xhs_*/
+benchmark_creators/

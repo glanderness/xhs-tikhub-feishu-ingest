@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""Repository-local launcher for the XHS ingestion CLI."""
+
+import pathlib
+import sys
+
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "scripts"))
+
+from xhs_ingest import main  # noqa: E402
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
