@@ -6,16 +6,22 @@
 
 <table width="100%">
   <tr>
-    <td width="50%" valign="top">
-      <strong>找优质算力，就找 BeefAPI</strong>
-      <p><a href="https://beefapi.com/">我的算力网址：https://beefapi.com/</a></p>
+    <td width="50%" align="center" valign="middle">
+      <strong>找优质算力就上 BeefAPI</strong>
     </td>
-    <td width="50%" valign="top">
-      <strong>个人联系方式</strong>
-      <p>如果大家对于这个 Skill 或者 AI 自媒体、创业感兴趣，可以直接扫描下方二维码，添加我的企业微信来找我聊天。</p>
-      <p align="center">
-        <img src="./assets/lucas-wecom-qr.png" alt="Lucas 企业微信二维码" width="320">
-      </p>
+    <td width="50%" align="center" valign="middle">
+      <strong>算力网址</strong>
+      <p><a href="https://beefapi.com/">https://beefapi.com/</a></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="middle">
+      <p align="center"><strong>个人联系方式</strong></p>
+      <p>如果大家对于这个 Skill 或者 AI 自媒体、创业感兴趣，可以直接扫描右侧二维码，添加我的企业微信来找我聊天。</p>
+    </td>
+    <td width="50%" align="center" valign="middle">
+      <p><strong>我的二维码</strong></p>
+      <img src="./assets/lucas-wecom-qr.png" alt="Lucas 企业微信二维码" width="300">
     </td>
   </tr>
 </table>
