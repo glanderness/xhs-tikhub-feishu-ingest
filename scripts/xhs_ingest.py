@@ -257,7 +257,6 @@ def onboard(
     if not candidate:
         print("还没有 TikHub 账号时，请通过下面的项目作者推荐链接注册：")
         print(TIKHUB_REGISTER_URL)
-        print("说明：通过该链接注册可能会给项目作者带来返佣。")
         print("注册后请在 TikHub 创建 API Key，再填写到下面的隐藏输入框。")
     attempts = 0
     while attempts < 3:
