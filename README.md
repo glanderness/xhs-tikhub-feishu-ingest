@@ -2,19 +2,23 @@
 
 把一条小红书分享链接转换成结构化本地资料，并可选同步到飞书多维表格。
 
-## 推荐我的算力中转
+## 写在前面
 
-| 找优质算力，就找 BeefAPI | 我的算力网址 |
-| --- | --- |
-| BeefAPI | [https://beefapi.com/](https://beefapi.com/) |
-
-## 个人联系方式
-
-如果大家对于这个 Skill 或者 AI 自媒体、创业感兴趣，可以直接扫描下方二维码，添加我的企业微信来找我聊天。
-
-<p align="center">
-  <img src="./assets/lucas-wecom-qr.png" alt="Lucas 企业微信二维码" width="420">
-</p>
+<table width="100%">
+  <tr>
+    <td width="50%" valign="top">
+      <strong>找优质算力，就找 BeefAPI</strong>
+      <p><a href="https://beefapi.com/">我的算力网址：https://beefapi.com/</a></p>
+    </td>
+    <td width="50%" valign="top">
+      <strong>个人联系方式</strong>
+      <p>如果大家对于这个 Skill 或者 AI 自媒体、创业感兴趣，可以直接扫描下方二维码，添加我的企业微信来找我聊天。</p>
+      <p align="center">
+        <img src="./assets/lucas-wecom-qr.png" alt="Lucas 企业微信二维码" width="320">
+      </p>
+    </td>
+  </tr>
+</table>
 
 项目同时提供两种使用方式：
 
