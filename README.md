@@ -33,13 +33,13 @@ Codex 会自动启动初始化。用户只需要依次完成两件事：
 1. 在自动打开的流程中完成飞书本地 CLI 登录。
 2. 注册 TikHub、创建 API Key，并在本地隐藏输入框中填入。
 
-TikHub 项目作者推荐注册链接：
+可以点击下方链接，完成 TikHub 注册：
 
 [https://user.tikhub.io/register?ref=bW0RSDaJ](https://user.tikhub.io/register?ref=bW0RSDaJ)
 
-通过该链接注册可能会给项目作者带来返佣。注册完成后，请在 TikHub 创建 API Key，初始化程序会引导你把它填入本地隐藏输入框。
+注册完成后，请在 TikHub 创建 API Key，初始化程序会引导你把它填入本地隐藏输入框。
 
-其余工作全部自动完成：
+其余工作全部都自动完成：
 
 - 创建本地配置和输出目录。
 - 检查并自动安装飞书 CLI。
